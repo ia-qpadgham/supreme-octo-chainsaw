@@ -5,6 +5,12 @@ import re
 import tarfile
 import yaml
 
+# ***************************
+# Author: Quinlan Padgham
+# Date: 01/01/2025
+# Description: Compiles Docker images into a single image
+# ***************************
+
 
 class DockerUtils:
     @staticmethod
@@ -57,7 +63,7 @@ class DockerUtils:
         try:
             image, build_logs = client.images.build(
                 path=dockerfile_path,
-                tag=f"qpadgham/{image_name}:{tag}",
+                tag=f"inductiveautomation/{image_name}:{tag}",
                 rm=True,
             )
             print(f"Successfully built image: {image.tags}")
@@ -98,7 +104,7 @@ class DockerUtils:
 
         for handler in handlers:
             service_name = handler.container_name
-            service_image_name = f"qpadgham/{image_name}:{service_name}"
+            service_image_name = f"inductiveautomation/{image_name}:{service_name}"
 
             port_mapping = []
             ports = handler.container.ports
@@ -261,9 +267,9 @@ class MSSQLHandler(ContainerHandler):
     def get_sa_password(self):
         env_list = self.container.attrs["Config"]["Env"]
         for item in env_list:
-            if item.startswith("SA_PASSWORD="):
+            if item.startswith("MSSQL_SA_PASSWORD="):
                 password = item.split("=", 1)[1]
-                sa_password_env = f"SA_PASSWORD={password}"
+                sa_password_env = f"MSSQL_SA_PASSWORD={password}"
                 self.environment_variables.append(sa_password_env)
 
     def get_db_names(self):
@@ -302,7 +308,7 @@ class MSSQLHandler(ContainerHandler):
         # Instruct MSSQL to create a database backup
         db_names = self.get_db_names()
         for db_name in db_names:
-            command = f'sh -c "./backup.sh {db_name}"'
+            command = f'sh -c "/usr/local/bin/backup.sh {db_name}"'
             result = self.container.exec_run(command)
             if "BACKUP DATABASE" not in (result.output.decode("utf-8")):
                 print(result.output.decode("utf-8"))
@@ -375,11 +381,12 @@ USER mssql
 
 
 class BuildManager:
-    def __init__(self, project_name, image_name, destination_folder=os.getcwd()):
+    def __init__(self, project_name, image_name, tag, destination_folder=os.getcwd()):
         self.project_name = project_name
         self.hanlders = self.get_handlers()
         self.base_folder = destination_folder
         self.image_name = image_name
+        self.tag = tag
 
     def get_handlers(self):
         containers = DockerUtils.get_running_containers(self.project_name)
@@ -434,7 +441,7 @@ ENTRYPOINT [ "/usr/local/bin/entrypoint-shim.sh" ]"""
         dockerfile_path = os.path.join(self.base_folder, "dockerfile")
         with open(dockerfile_path, "w") as file:
             file.write(build_dockerfile_content)
-        DockerUtils.build_image(self.base_folder, self.image_name, "build")
+        DockerUtils.build_image(self.base_folder, self.image_name, self.tag)
 
     def create_shim(self):
         shim_content = f"""\
@@ -495,5 +502,6 @@ class HandlerFactory:
 
 
 if __name__ == "__main__":
-    manager = BuildManager("modbus", "modbus")
+    # ------- projectname, repository, tag
+    manager = BuildManager("modbus", "modbus", "tag")
     manager.run()
